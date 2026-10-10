@@ -1,0 +1,6 @@
+torch>=2.3
+transformers>=4.56
+huggingface_hub>=0.34
+fastapi>=0.110
+uvicorn>=0.29
+chsm8-tok @ git+https://huggingface.co/LegumMagister/chsm8-tokenizer

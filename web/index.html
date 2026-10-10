@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHSM8 Style Chess</title>
+<meta name="description" content="CHSM8: a 210M-parameter chess transformer that plays in the style you describe in plain English. Demos, models, datasets and results.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#fbfaf7;--panel:#ffffff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e6e3dc;
+  --accent:#c2410c;--accent2:#1d4ed8;--soft:#f3efe7;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121214;--panel:#1b1b1f;--ink:#ececf0;--muted:#a0a0aa;--line:#2c2c33;
+    --accent:#fb923c;--accent2:#60a5fa;--soft:#202026;--shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121214;--panel:#1b1b1f;--ink:#ececf0;--muted:#a0a0aa;--line:#2c2c33;
+  --accent:#fb923c;--accent2:#60a5fa;--soft:#202026;--shadow:none;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Inter,system-ui,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:0 16px 80px}
+nav.top{position:sticky;top:0;z-index:4;background:var(--bg);border-bottom:1px solid var(--line)}
+nav.top div{max-width:1040px;margin:0 auto;padding:10px 16px;display:flex;gap:18px;overflow-x:auto;white-space:nowrap;font-size:14px;align-items:center}
+nav.top a{color:var(--muted);text-decoration:none}
+nav.top a:hover{color:var(--ink)}
+nav.top b{font:600 14px JetBrains Mono,monospace;color:var(--accent);margin-right:6px}
+header.hero{padding:56px 0 24px}
+.kicker{font:600 13px JetBrains Mono,monospace;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+h1{font-size:clamp(32px,6vw,56px);line-height:1.05;margin:.2em 0 .3em;font-weight:800;letter-spacing:-.02em}
+h2{font-size:26px;margin:64px 0 6px;letter-spacing:-.01em;scroll-margin-top:60px}
+h3{font-size:17px;margin:0 0 6px}
+p.lead{font-size:19px;color:var(--muted);max-width:760px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.typer{font:600 clamp(18px,3vw,24px) JetBrains Mono,monospace;color:var(--accent2);min-height:1.6em}
+.typer::after{content:"▍";animation:blink 1s steps(1) infinite;color:var(--accent)}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion: reduce){.typer::after{animation:none}}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-top:28px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:28px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:13px;line-height:1.4;display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow);margin-top:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:860px){.grid3{grid-template-columns:1fr}}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}}
+.grid2>.card,.grid3>.card{margin-top:0}
+.chart{position:relative;height:300px}
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px}
+.flow>.step:nth-child(2){grid-column:2 / span 3}
+.flow .branch{grid-column:2 / span 3;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.flow .branch.games{grid-template-columns:1fr 2fr}
+@media (max-width:760px){.flow,.flow .branch,.flow .branch.games{grid-template-columns:1fr}.flow .branch,.flow>.step:nth-child(2){grid-column:auto}}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;transition:.15s;text-align:left;color:var(--ink);font:inherit;width:100%}
+.step:hover,.step.on{border-color:var(--accent);transform:translateY(-2px)}
+.step small{display:block;color:var(--muted);font:12px JetBrains Mono,monospace}
+.step b{display:block;margin:2px 0}
+.step .elo{color:var(--accent);font:600 12px JetBrains Mono,monospace}
+.flowlabel{font:600 12px JetBrains Mono,monospace;color:var(--muted);align-self:center}
+.step-detail{min-height:4em}
+.step-detail ul{margin:6px 0 0;padding-left:20px}
+textarea,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+textarea{width:100%;font:14px JetBrains Mono,monospace;min-height:72px;resize:vertical}
+button{font:inherit;cursor:pointer;border-radius:10px;padding:7px 11px}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.ghost:hover{border-color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.toks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tok{font:12px JetBrains Mono,monospace;border:1px solid var(--line);border-radius:8px;padding:4px 7px;background:var(--bg)}
+.tok b{color:var(--accent2)}
+.tok i{font-style:normal;color:var(--muted)}
+.err{color:#dc2626;font:13px JetBrains Mono,monospace;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+table.vs td:not(:first-child),table.vs th:not(:first-child){text-align:right}
+table.vs tr.grp th{text-align:left;font-weight:400;font-style:italic;color:var(--muted);padding-top:10px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:13px}
+th:first-child,td:first-child{text-align:left}
+td.l,th.l{text-align:left}
+.tablewrap{overflow-x:auto}
+tr.hi td{font-weight:600}
+code{font:13px JetBrains Mono,monospace;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 5px}
+pre{font:13px/1.5 JetBrains Mono,monospace;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto;margin:8px 0 0}
+pre .c{color:var(--muted)}
+a{color:var(--accent2)}
+.themebtn{position:fixed;bottom:14px;right:14px;z-index:5;background:var(--panel)}
+footer{margin-top:64px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+.byline{font-weight:600;margin:6px 0 0}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.btn{display:inline-block;padding:9px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);text-decoration:none;font-weight:600;font-size:14px}
+.btn:hover{border-color:var(--accent)} .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.teaser{margin:28px 0 0;padding:12px} .teaser video{width:100%;border-radius:10px;background:#000;aspect-ratio:16/9;display:block}
+.teaser figcaption{margin-top:8px;font-size:14px}
+a.try{text-decoration:none;color:inherit;display:block} a.try:hover{border-color:var(--accent)}
+a.try h3{color:var(--accent)}
+.prompts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.prompts span{font:13px JetBrains Mono,monospace;border:1px solid var(--line);border-radius:999px;padding:4px 10px;background:var(--panel)}
+ul.tight{margin:8px 0;padding-left:20px} ul.tight li{margin:4px 0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.tabs button{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.tabs button.on{color:var(--ink);border-color:var(--accent)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<nav class="top" aria-label="sections"><div>
+  <b>CHSM8</b>
+  <a href="#try">Try it</a><a href="#use">Use it</a><a href="#pipeline">Pipeline</a><a href="#results">Results</a>
+  <a href="#release">Models and data</a><a href="#limits">Limitations</a><a href="#cite">Cite</a>
+</div></nav>
+<button class="ghost themebtn" id="themeBtn" aria-label="Toggle light and dark theme">◐</button>
+<main>
+
+<header class="hero">
+  <div class="kicker">Open chess model · plays the style you describe</div>
+  <h1>Tell a chess model <em>how</em> to play.</h1>
+  <div class="typer" id="typer" aria-hidden="true"></div>
+  <p class="lead">CHSM8 is a 210M-parameter chess transformer that picks its moves from a free-text description of a playing
+  style. It plays without search, and every move is legal by construction. Weights, datasets, labels and demos are open.</p>
+  <p class="byline">Ilia Badanin · October 2026</p>
+  <div class="links">
+    <a class="btn primary" href="play.html">Play in your browser</a>
+    <a class="btn" href="play.html?backend=server">Play on your GPU</a>
+    <a class="btn" href="https://huggingface.co/LegumMagister">Models and datasets</a>
+    <a class="btn" href="https://github.com/nov3o/llm_chess-demo">Code</a>
+    <a class="btn" id="reportBtn" href="chsm8.pdf" hidden>Technical report (PDF)</a>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>1837</b><span>Elo of the pretrained model against Stockfish at <code>UCI_Elo</code> 2000, no search</span></div>
+    <div class="stat"><b>1.07B</b><span>filtered Lichess games for pretraining</span></div>
+    <div class="stat"><b>30.1M</b><span>game sides with five style descriptions each</span></div>
+    <div class="stat"><b>53→67%</b><span>early queen trades when asked, before and after DPO</span></div>
+  </div>
+</header>
+
+<figure class="teaser card" id="teaserWrap" hidden>
+  <video id="teaser" preload="none" poster="media/teaser.jpg" controls muted playsinline loop></video>
+  <figcaption class="muted">Same position, different prompt, different move.</figcaption>
+</figure>
+
+<section>
+  <h2 id="what">What it does</h2>
+  <p>Chess models trained on human games now play well without search, but none of them lets you simply say how they should
+  play. Rating-conditioned models control strength and player-specific models control identity; CHSM8 accepts an open-ended
+  request. It is built for sparring and fun rather than grandmaster-level play, and it stays strong without search.</p>
+  <div class="prompts" aria-label="example prompts">
+    <span>trade queens as early as possible</span>
+    <span>castle queenside and storm the enemy king with your pawns</span>
+    <span>go for the Sicilian Defense</span>
+    <span>solid, safe, risk-free chess</span>
+    <span>play like Magnus Carlsen</span>
+  </div>
+  <div class="grid3" style="margin-top:16px">
+    <div class="card"><h3>Text in, move out</h3><p class="muted small" style="margin:0">A frozen EmbeddingGemma-300m encodes the prompt. Gated cross-attention in the top 6 of 12 decoder layers reads every token of it.</p></div>
+    <div class="card"><h3>Legal by construction</h3><p class="muted small" style="margin:0">Each move is a tuple (source, destination, piece, promotion) with one output head per field. The model scores only the legal moves of the position.</p></div>
+    <div class="card"><h3>No search</h3><p class="muted small" style="margin:0">One forward pass per move: the model plays its highest-scoring legal move. That is fast enough to run in a browser tab.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2 id="try">Try it</h2>
+  <p class="muted">Play against CHSM8, give each side a style prompt, and see the probabilities behind every move.</p>
+  <div class="grid2">
+    <a class="card try" href="play.html"><h3>In your browser</h3><p class="muted" style="margin:0">No install. The model runs in this tab on WebGPU, or on the CPU with WebAssembly, after a one-time download of about 480 MB (8-bit weights, fp32 compute).</p></a>
+    <a class="card try" href="play.html?backend=server"><h3>On your GPU</h3><p class="muted" style="margin:0">Full-precision PyTorch on CUDA, Apple MPS or CPU. Clone the code, run <code>python server.py</code> and choose "My server".</p></a>
+  </div>
+  <div class="card">
+    <h3>The move tokenizer, live</h3>
+    <p class="muted small" style="margin-top:0">Any notation in (SAN, LAN, UCI, numbered PGN with comments and variations, mixed within one game), the exact
+    model input out. Each move becomes a 15-bit id (6 bits from-square, 6 bits to-square, 3 bits promotion) and a model row
+    <code>(kind, src, dst, piece, promo)</code>. This box runs the Rust tokenizer compiled to WebAssembly, the same code the demos use.</p>
+    <textarea id="tokIn" aria-label="game to tokenize">1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. O-O Nf6</textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="ghost" data-ex="1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. O-O Nf6">SAN</button>
+      <button class="ghost" data-ex="e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 e1g1 g8f6">UCI</button>
+      <button class="ghost" data-ex="1.e2-e4 e7-e5 2.Ng1-f3 Nb8-c6 3.Bf1-b5 a7-a6 4.O-O Ng8-f6">LAN</button>
+      <button class="ghost" data-ex='[Event "?"] 1. e4 {best by test} e5 (1... c5) 2. Nf3! Nc6 3. Bb5 a6?! 4. 0-0 Nf6 *'>messy PGN</button>
+      <span id="convWrap" hidden><label class="small muted" for="convDst">convert to</label>
+        <select id="convDst"><option value="">tokens and rows</option><option value="san">SAN</option><option value="lan">LAN</option><option value="uci">UCI</option><option value="pgn">numbered PGN</option></select></span>
+    </div>
+    <div class="toks" id="tokOut" aria-live="polite"></div>
+    <div class="err" id="tokErr"></div>
+  </div>
+</section>
+
+<section>
+  <h2 id="use">Use it</h2>
+  <p class="muted">The models are project-specific PyTorch checkpoints on Hugging Face; the inference code is one file,
+  <code>chsm8.py</code>, in the code repository.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>Score moves from Python</h3>
+<pre><span class="c"># needs a Rust toolchain for the tokenizer (https://rustup.rs)</span>
+git clone https://github.com/nov3o/llm_chess-demo
+cd llm_chess-demo && pip install -r requirements.txt
+hf auth login   <span class="c"># once: the prompt encoder is gated</span></pre>
+<pre>from chsm8 import CHSM8
+
+model = CHSM8.from_pretrained()   <span class="c"># LegumMagister/chsm8</span>
+moves = model.score("1. e4 e5 2. Nf3",
+    "castle queenside and storm the enemy king with your pawns")
+print(moves[:3])   <span class="c"># legal moves with log-probabilities, best first</span></pre>
+      <p class="muted small">An empty prompt gives the model's own play. Other weights:
+      <code>CHSM8.from_pretrained("LegumMagister/chsm8-sft")</code>, or <code>filename="full_pass/model.pt"</code> for the full-pass DPO model.
+      Accept the <a href="https://huggingface.co/google/embeddinggemma-300m">EmbeddingGemma-300m</a> license on Hugging Face first.</p>
+    </div>
+    <div class="card">
+      <h3>Tokenizer and data</h3>
+<pre>pip install "git+https://huggingface.co/LegumMagister/chsm8-tokenizer"</pre>
+<pre>import chsm8_tok
+chsm8_tok.tokenize("1. e4 e5 2. Nf3")   <span class="c"># [1804, 2356, 1350]</span>
+chsm8_tok.convert("1. e4 e5 2. Nf3", dst="lan", type="text")
+<span class="c"># 'e2-e4 e7-e5 Ng1-f3'</span></pre>
+<pre>from datasets import load_dataset
+games = load_dataset("LegumMagister/chsm8-pre-training",
+                     split="train", streaming=True)
+labels = load_dataset("LegumMagister/chsm8-post-training",
+                      split="validation")</pre>
+      <p class="muted small">Games join their style labels on <code>(month, row_idx)</code>, the stable game id of every CHSM8 dataset.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 id="pipeline">How it is built</h2>
+  <p class="muted">Standard components at every stage: a Llama-style decoder, GPT-3 style schedules, Flamingo-style gated
+  cross-attention, distilled labels and DPO. Design choices at each stage were made by fixed-budget automated search loops
+  in the style of <code>autoresearch</code>. Elo is without a prompt, against Stockfish at <code>UCI_Elo</code> 2000. Select a stage.</p>
+  <div class="flow" id="flow">
+    <button class="step" data-k="data"><small>1 · data</small><b>Lichess games</b><span class="muted small">7.95B → 1.07B</span></button>
+    <button class="step" data-k="pt"><small>2 · pretraining</small><b>chsm8-pt</b><span class="elo">1837 Elo</span></button>
+    <div class="flowlabel">style branch, from chsm8-pt</div>
+    <div class="branch">
+      <button class="step" data-k="labels"><small>3 · labels</small><b>style descriptions</b><span class="muted small">30.1M sides × 5</span></button>
+      <button class="step" data-k="sft"><small>4 · SFT</small><b>chsm8-sft</b><span class="elo">1792 Elo</span></button>
+      <button class="step" data-k="dpo"><small>5 · DPO</small><b>chsm8</b><span class="elo">1797 Elo</span></button>
+    </div>
+    <div class="flowlabel">games-only branch, from chsm8-pt</div>
+    <div class="branch games">
+      <button class="step" data-k="base"><small>6 · continuation</small><b>chsm8-player-base</b><span class="elo">1890 Elo</span></button>
+      <button class="step" data-k="players"><small>7 · player fine-tunes</small><b>14 player models</b><span class="muted small">Carlsen, Nakamura, Fischer, ...</span></button>
+    </div>
+  </div>
+  <div class="card step-detail" id="stepDetail" aria-live="polite"></div>
+</section>
+
+<section>
+  <h2 id="results">Key results</h2>
+  <p class="muted">Greedy legal moves against Stockfish 17.1 limited to <code>UCI_Elo</code> 2000, colors alternating.
+  The Elo scale is a reproducible engine calibration, not a FIDE or Lichess rating. Style results use 2,000 games per prompt
+  (95% precision about ±1 to 2 points for shares and ±21 Elo).</p>
+
+  <div class="card">
+    <h3>Prompts change play, and DPO sharpens it</h3>
+    <p class="muted small" style="margin-top:0">The targeted behavior of the model's own side with no prompt, with the matching prompt, and under the
+    three other main prompts (6,000 games).</p>
+    <div class="tabs" role="tablist" id="styleTabs"></div>
+    <div class="chart"><canvas id="styleChart" aria-label="style adherence chart"></canvas></div>
+    <p class="small muted" id="styleNote"></p>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="card">
+      <h3>Main comparison</h3>
+      <div class="tablewrap"><table>
+        <tr><th>model</th><th>queens traded by ply 40</th><th>pawn moves per move</th><th>queenside castling</th><th>Elo, no prompt</th></tr>
+        <tr><td>chsm8-sft</td><td>53.0%</td><td>.290</td><td>97.3%</td><td>1792</td></tr>
+        <tr class="hi"><td>chsm8</td><td>66.5%</td><td>.319</td><td>99.7%</td><td>1797</td></tr>
+        <tr><td>chsm8, full pass</td><td>58.7%</td><td>.317</td><td>99.6%</td><td>1812</td></tr>
+      </table></div>
+      <p class="muted small">Each metric is measured under its own prompt; queenside castling is the share of castling.
+      The main model is a 20-minute DPO run on 1 GPU; a full pass over the data did not improve on it. Strength without a prompt is unchanged.</p>
+    </div>
+    <div class="card">
+      <h3>The cost of following risky prompts</h3>
+      <div class="chart"><canvas id="eloChart" aria-label="Elo with no prompt and under the attack prompt"></canvas></div>
+      <p class="muted small">Told to attack at all costs and sacrifice material, chsm8 does, and without search it loses about 150 Elo
+      against an accurate engine (SFT: about 40). Training games labeled as sacrificial were not lost more often.</p>
+    </div>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="card">
+      <h3>Strong without search</h3>
+      <div class="chart"><canvas id="versus" aria-label="head to head results"></canvas></div>
+      <p class="muted small">chsm8-pt against other public models trained without preference tuning, rewards or search: 200 games each,
+      from 100 openings with colors swapped. Elo advantage with 95% CI. It wins every match, including against a 2.8B model.</p>
+    </div>
+    <div class="card">
+      <h3>Strength during pretraining</h3>
+      <div class="chart"><canvas id="ptElo" aria-label="Elo along the pretraining pass"></canvas></div>
+      <p class="muted small">200 games per checkpoint (±50 Elo); final model 999 games, 1837 Elo (95% CI 1817 to 1856). The pass was
+      restarted at 60% with the remaining data reshuffled, after a loss bump tied to the 2021-09 to 2022-05 Lichess months.</p>
+    </div>
+  </div>
+
+
+  <div class="card">
+    <h3>Against strong public models, 1,000 games per match</h3>
+    <p class="small">Score of each CHSM8 model (wins plus half the draws), both sides playing their most likely legal move from book
+    openings with both colors. Every opponent was also rated against Stockfish under the same protocol, where chsm8-pt rates 1837,
+    chsm8-player-base 1890 and the Carlsen fine-tune 1903.</p>
+    <div class="tablewrap"><table class="vs">
+      <tr><th>opponent</th><th>its Elo</th><th>chsm8-pt</th><th>player-base</th><th>player-carlsen</th></tr>
+      <tr class="grp"><th colspan="5">public models trained by supervised prediction</th></tr>
+      <tr><td>Maia-2 blitz</td><td>1657</td><td>65.3%</td><td>71.8%</td><td>71.7%</td></tr>
+      <tr><td>ChessLFM</td><td>1687</td><td>91.5%</td><td>93.3%</td><td>92.8%</td></tr>
+      <tr><td>Kempner ChessFormer 50M</td><td>1733</td><td>86.5%</td><td>90.0%</td><td>93.9%</td></tr>
+      <tr><td>chess-gpt2-uci</td><td>1784</td><td>82.2%</td><td>88.8%</td><td>91.0%</td></tr>
+      <tr><td>Chess-GPT (Karvonen)</td><td>1873</td><td>75.1%</td><td>83.3%</td><td>81.1%</td></tr>
+      <tr><td>ChessGPT-base 2.8B</td><td>1731</td><td>88.0%</td><td>93.7%</td><td>94.3%</td></tr>
+      <tr class="grp"><th colspan="5">strong recent models, no search</th></tr>
+      <tr><td>Otter 15M</td><td>2021</td><td>49.1%</td><td>56.1%</td><td>61.1%</td></tr>
+      <tr><td>Allie 2.0</td><td>2232</td><td>13.5%</td><td>21.2%</td><td>19.8%</td></tr>
+      <tr><td>Maia-3 79M</td><td>2271</td><td>14.0%</td><td>15.7%</td><td>21.3%</td></tr>
+      <tr><td>Searchless 9M</td><td>2403</td><td>14.9%</td><td>13.0%</td><td>16.7%</td></tr>
+      <tr><td>Searchless 136M</td><td>2584</td><td>10.2%</td><td>10.3%</td><td>6.3%</td></tr>
+      <tr class="grp"><th colspan="5">with search</th></tr>
+      <tr><td>Matilda (Maia-3 + Stockfish)</td><td>3009</td><td>1.9%</td><td>4.1%</td><td>1.6%</td></tr>
+    </table></div>
+    <p class="muted small">CHSM8 wins every match against the older public models, is about even with Otter, and loses clearly to
+    Allie 2.0, Maia-3 and DeepMind's searchless transformers, which are trained on far more data or on engine evaluations. None of
+    the opponents takes a text prompt.</p>
+  </div>
+
+  <div class="grid2" style="margin-top:16px">
+    <div class="card">
+      <h3>Player prompts</h3>
+      <p class="small">On about 1,000 held-out games for each of the 20 top players with the most data, <em>"play like {player}"</em> with
+      the right name makes the player's real moves more likely than the same wording with another top player's name, for all 20 players.</p>
+      <div class="tablewrap"><table>
+        <tr><th>chsm8, paired on 20,508 games</th><th>another name</th><th>right name</th></tr>
+        <tr><td>probability of the player's move</td><td>47.1%</td><td>48.7%</td></tr>
+        <tr><td>top-1 move match</td><td>53.7%</td><td>55.5%</td></tr>
+        <tr><td>top-3 move match</td><td>77.4%</td><td>78.8%</td></tr>
+      </table></div>
+      <p class="muted small">Across all 99 players, the right name wins in cross-entropy for 94 (SFT) and 96 (DPO). The effect is modest
+      because top players differ little in their moves.</p>
+    </div>
+    <div class="card">
+      <h3>Labels that agree with the board</h3>
+      <p class="small">Gemma-4-31B described 3.02M game sides from their moves plus a card of features measured on the board. A
+      Gemma-3-1B student, distilled from the 2.4M teacher sets that contradict nothing on the board, labeled the rest.</p>
+      <div class="tablewrap"><table>
+        <tr><th>labeler</th><th>labels contradicting the board</th><th>sides per second, 4-GPU node</th></tr>
+        <tr><td>Gemma-4-31B teacher</td><td>4.7%</td><td>7.5</td></tr>
+        <tr class="hi"><td>Gemma-3-1B student</td><td>0.5%</td><td>520</td></tr>
+      </table></div>
+      <p class="muted small">The student carries as much signal about the game as its teacher. A second teacher, Apertus-70B, wrote
+      vivid labels that carried 4 to 5 times less signal, so it was dropped.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 id="release">Models and datasets</h2>
+  <p class="muted">Everything is public on <a href="https://huggingface.co/LegumMagister">Hugging Face</a>. You are welcome to
+  reproduce the results, build on the models and use the data and labels in your own work. The training code and search
+  logs will follow.</p>
+  <div class="card tablewrap">
+    <table>
+      <tr><th class="l">model</th><th class="l">what</th><th>Elo, no prompt</th><th>license</th></tr>
+      <tr class="hi"><td><a href="https://huggingface.co/LegumMagister/chsm8">chsm8</a></td><td class="l">final style model (DPO; called chsm8-dpo in the report), full-pass variant, browser ONNX export</td><td>1797</td><td>MIT</td></tr>
+      <tr><td><a href="https://huggingface.co/LegumMagister/chsm8-sft">chsm8-sft</a></td><td class="l">style-conditioned SFT model, evaluation prompts</td><td>1792</td><td>MIT</td></tr>
+      <tr><td><a href="https://huggingface.co/LegumMagister/chsm8-pt">chsm8-pt</a></td><td class="l">pretrained model, no text input</td><td>1837</td><td>MIT</td></tr>
+      <tr><td><a href="https://huggingface.co/LegumMagister/chsm8-player-base">chsm8-player-base</a></td><td class="l">games-only continuation, no cross-attention; recommended base for new work</td><td>1890</td><td>MIT</td></tr>
+      <tr><td><a href="https://huggingface.co/LegumMagister/chsm8-player-base#player-models">chsm8-player-*</a></td><td class="l">14 player models: the FIDE top 10, plus Fischer, Kasparov, Karpov and Polgar</td><td>1850 to 1910</td><td>MIT</td></tr>
+      <tr><td><a href="https://huggingface.co/LegumMagister/chsm8-labeler-gemma3-1b">chsm8-labeler-gemma3-1b</a></td><td class="l">style labeler distilled from Gemma-4-31B</td><td></td><td>Gemma</td></tr>
+      <tr><td><a href="https://huggingface.co/LegumMagister/chsm8-tokenizer">chsm8-tokenizer</a></td><td class="l">Rust move tokenizer and notation converter, Python and WebAssembly</td><td></td><td>MIT</td></tr>
+    </table>
+    <table style="margin-top:16px">
+      <tr><th class="l">dataset</th><th class="l">what</th><th>size</th><th>license</th></tr>
+      <tr><td><a href="https://huggingface.co/datasets/LegumMagister/chsm8-pre-training">chsm8-pre-training</a></td><td class="l">filtered Lichess games, 2013-01 to 2026-06, with conversion scripts</td><td>1.07B games</td><td>CC0</td></tr>
+      <tr><td><a href="https://huggingface.co/datasets/LegumMagister/chsm8-post-training">chsm8-post-training</a></td><td class="l">game sides with five style descriptions, the SFT and DPO splits</td><td>30.1M sides</td><td>Apache-2.0</td></tr>
+      <tr><td><a href="https://huggingface.co/datasets/LegumMagister/chsm8-labeler-distill">chsm8-labeler-distill</a></td><td class="l">the clean Gemma-4-31B label sets the labeler was distilled from</td><td>2.40M sets</td><td>Apache-2.0</td></tr>
+      <tr><td><a href="https://huggingface.co/datasets/LegumMagister/chsm8-teacher-labels">chsm8-teacher-labels</a></td><td class="l">every teacher label (Gemma-4-31B, Apertus-v1.5-70B), raw and repaired</td><td>7.77M sets</td><td>Apache-2.0</td></tr>
+      <tr><td><a href="https://huggingface.co/datasets/LegumMagister/chsm8-top-players">chsm8-top-players</a></td><td class="l">games of the 14 modeled players with their held-out splits, crawler and prompt templates</td><td>119,618 games</td><td>see card</td></tr>
+    </table>
+    <p class="muted small">Code: <a href="https://github.com/nov3o/llm_chess-demo">github.com/nov3o/llm_chess-demo</a> (inference, ONNX export, both demos; MIT).
+    The prompt encoder, EmbeddingGemma-300m, is downloaded at run time under the Gemma Terms of Use.</p>
+  </div>
+</section>
+
+<section>
+  <h2 id="limits">Limitations</h2>
+  <div class="card">
+    <ul class="tight">
+      <li><b>No search.</b> The model can miss tactics an engine would see, and risky prompts cost strength against an accurate opponent.</li>
+      <li><b>An alignment tax.</b> Style SFT costs about 45 Elo without a prompt (1792 against 1837), because the decoder learns to fit the description as well as the move.</li>
+      <li><b>No weak-play conditioning.</b> Every described player is rated 2200 or higher, so asking for weaker or stronger play does not change strength.</li>
+      <li><b>Modest player effect.</b> Player prompts work for 94 of 99 players, but move match rises by only about one point.</li>
+      <li><b>Proxy metrics.</b> Style adherence is measured on a handful of prompts with hand-written metrics, not a validated judgment of style.</li>
+      <li>English prompts only; standard chess only.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2 id="cite">Cite</h2>
+<pre>@techreport{badanin2026chsm8,
+  title  = {CHSM8: A Chess Transformer that Follows Natural-Language Style Prompts},
+  author = {Badanin, Ilia},
+  year   = {2026},
+  month  = oct,
+  url    = {https://llmchess-demo-web.vercel.app}
+}</pre>
+</section>
+
+<footer>Ilia Badanin · CHSM8 · all numbers are from the technical report's evaluations ·
+  <a href="https://huggingface.co/LegumMagister">Hugging Face</a> · <a href="https://github.com/nov3o/llm_chess-demo">GitHub</a></footer>
+</main>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const root=document.documentElement;
+try{const t=localStorage.getItem("theme");if(t)root.dataset.theme=t;}catch(e){}
+const css=v=>getComputedStyle(root).getPropertyValue(v).trim();
+$("#themeBtn").onclick=()=>{const dark=css("--bg")==="#121214";root.dataset.theme=dark?"light":"dark";try{localStorage.setItem("theme",root.dataset.theme)}catch(e){};drawAll();};
+
+/* optional assets: shown only when present */
+fetch("chsm8.pdf",{method:"HEAD"}).then(r=>{if(r.ok)$("#reportBtn").hidden=false}).catch(()=>{});
+fetch("media/teaser.mp4",{method:"HEAD"}).then(r=>{if(r.ok){$("#teaser").src="media/teaser.mp4";$("#teaserWrap").hidden=false}}).catch(()=>{});
+
+/* typer */
+const phrases=["go for the Sicilian Defense","solid, safe, risk-free chess","You are Magnus Carlsen in his prime","castle queenside and storm the enemy king","trade queens as early as possible"];
+if(matchMedia("(prefers-reduced-motion: reduce)").matches){$("#typer").textContent='"'+phrases[0]+'"';}else{
+let pi=0,ci=0,del=false;
+(function tick(){const p=phrases[pi];$("#typer").textContent='"'+p.slice(0,ci)+(ci>=p.length?'"':'');
+ if(!del&&ci<p.length)ci++;else if(!del){del=true;return setTimeout(tick,1600)}else if(ci>0)ci--;else{del=false;pi=(pi+1)%phrases.length}
+ setTimeout(tick,del?22:55)})();}
+
+/* pipeline */
+const M=(n,t)=>`<a href="https://huggingface.co/${t?"datasets/":""}LegumMagister/${n}">${n}</a>`;
+const S={
+ data:["Data: 1.07B games from 7.95B",`<ul><li>All 162 monthly Lichess dumps, 2013-01 to 2026-06 (2.51 TB compressed).</li>
+  <li>Kept: rated, human, standard, finished games; both players rated 1800 or higher; blitz or slower by arithmetic (base + 40 × increment ≥ 180 s), not by the era-dependent speed label.</li>
+  <li>Each game is cut where the side to move has less than 15 s left, which removes time scrambles. Result: 1,068,263,794 games, 71.1B moves (${M("chsm8-pre-training",1)}).</li></ul>`],
+ pt:["Pretraining: chsm8-pt, 1837 Elo",`<ul><li>12-layer, width-960 Llama-style decoder (210.5M parameters, 166.2M trained), chosen over pretrained Qwen2.5 and T5 bodies in a fixed-budget search.</li>
+  <li>Factorized moves: one small embedding and one output head per field (source, destination, piece, promotion) instead of a vocabulary of move strings; a soft penalty on illegal classes during training.</li>
+  <li>One pass over 78.32B positions on 4 GH200 in about 40 hours. Result: ${M("chsm8-pt")}, 1837 Elo.</li></ul>`],
+ labels:["Labels: 30.1M game sides, five descriptions each",`<ul><li>The labeler sees one side's moves plus a card of features measured on the board (development, castling, sacrifices, king pressure, trades, ...). Without the card, labels were often false.</li>
+  <li>Gemma-4-31B described 3.02M sides; a Gemma-3-1B student, distilled from the 2.4M sets that contradict nothing on the board, described the rest about 70 times faster (${M("chsm8-labeler-gemma3-1b")}).</li>
+  <li>Five descriptions per side, from terse to long, written as instructions a user might type (${M("chsm8-post-training",1)}).</li></ul>`],
+ sft:["Style SFT: chsm8-sft, 1792 Elo",`<ul><li>A frozen EmbeddingGemma-300m encodes the description; all its token states feed gated cross-attention, x + tanh(g) · attn(x, c) with g = 0 at the start, in the top 6 of 12 layers.</li>
+  <li>Passing every token state instead of one pooled vector was the largest single improvement; the final model's right-minus-wrong description gap is six times that of the pooled run.</li>
+  <li>27.08M described sides plus top-player games with "play like {player}" prompts, one pass, 3.1 hours on 8 GH200 (${M("chsm8-sft")}).</li></ul>`],
+ dpo:["DPO: chsm8, 1797 Elo",`<ul><li>Label-swap pairs: chosen = a real game under its own description, rejected = the same moves under another game's description. No sampling, no reward model.</li>
+  <li>β 0.5 plus NLL and KL anchors (weight 1 each), chosen from about 70 short runs and confirmed on 2,000 games per prompt.</li>
+  <li>The released main model is a 20-minute run on 1 GPU (0.56M sides); a full pass over 27.08M sides did not improve play (${M("chsm8")}).</li></ul>`],
+ base:["Games-only continuation: chsm8-player-base, 1890 Elo",`<ul><li>chsm8-pt continued for one pass over 26.0M high-quality games (at least one player rated 2200 or higher), with no text and without the cross-attention scaffold.</li>
+  <li>1.1 hours on 4 GH200; the strongest CHSM8 model and the recommended base for new work (${M("chsm8-player-base")}).</li></ul>`],
+ players:["Player models: 14 fine-tunes",`<ul><li>chsm8-player-base fine-tuned on one player's own moves: the FIDE top 10 from their Chess.com and Lichess games, and Fischer, Kasparov, Karpov and Polgar from classical games.</li>
+  <li>Move match on held-out games rises for 13 of 14 players (−0.5 to +3.2 points), and strength stays within 40 Elo of the base (${M("chsm8-top-players",1)}).</li></ul>`],
+};
+const steps=document.querySelectorAll("#flow .step");
+steps.forEach(b=>b.onclick=()=>{steps.forEach(x=>x.classList.remove("on"));b.classList.add("on");const [h,d]=S[b.dataset.k];$("#stepDetail").innerHTML=`<h3>${h}</h3>${d}`;});
+steps[0].click();
+
+/* data, all from the technical report */
+const ptA=[[0,1080],[5,1681],[10,1740],[15,1725],[20,1699],[25,1751],[30,1770],[35,1762],[40,1783],[45,1767],[48,1712],[50,1809],[55,1762],[60,1725],[65,1814],[70,1814]];
+const ptB=[[65,1832],[70,1818],[75,1857],[80,1844],[85,1869],[90,1821],[95,1849],[100,1829]];
+const versus=[["Maia-2 blitz (23M)",100,59,144],["Chess-GPT 16 layers (51M)",166,122,216],["chess-gpt2-uci (86M)",298,249,359],["ChessGPT-base (2.8B)",330,278,397],["Kempner ChessFormer (51M)",363,309,434]];
+// [tab, prompt, metric, scale, SFT [none, matching, other], DPO [none, matching, other]]
+const STY=[
+ ["queens","trade queens as early as possible","queens traded by ply 40 (% of games)",100,[21,53,21],[23,66,14]],
+ ["pawns","push your pawns aggressively up the board and grab space","pawn moves per own move",1,[.251,.290,.259],[.251,.319,.265]],
+ ["queenside","castle queenside and storm the enemy king with your pawns","games with queenside castling (%)",100,[13,89,13],[13,94,13]],
+ ["checks","attack the king at all costs and sacrifice material for the initiative","checks per own move",1,[.067,.076,.068],[.068,.075,.054]],
+];
+const ELO={labels:["no prompt","attack at all costs"],sft:[1792,1752],dpo:[1797,1647]};
+let styleIdx=0;
+const tabs=$("#styleTabs");
+STY.forEach((s,i)=>{const b=document.createElement("button");b.textContent=s[0];b.setAttribute("role","tab");b.onclick=()=>{styleIdx=i;drawStyle()};tabs.appendChild(b)});
+
+const charts={};
+function mk(id,cfg){if(charts[id])charts[id].destroy();charts[id]=new Chart(document.getElementById(id),cfg)}
+function base(){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{boxWidth:12}}}}}
+function drawStyle(){
+ const [t,p,metric,scale,sft,dpo]=STY[styleIdx], mut=css("--muted"), acc=css("--accent");
+ [...tabs.children].forEach((b,i)=>{b.classList.toggle("on",i===styleIdx);b.setAttribute("aria-selected",i===styleIdx)});
+ const fmt=v=>scale===100?v+"%":v.toFixed(3);
+ const o=base(); o.plugins.tooltip={callbacks:{label:c=>`${c.dataset.label}: ${fmt(c.raw)}`}};
+ o.scales={y:{min:0,title:{display:true,text:metric}}};
+ mk("styleChart",{type:"bar",data:{labels:["no prompt","the matching prompt","the other three prompts"],datasets:[
+   {label:"chsm8-sft",data:sft,backgroundColor:mut,borderRadius:6},{label:"chsm8 (after DPO)",data:dpo,backgroundColor:acc,borderRadius:6}]},options:o});
+ $("#styleNote").textContent=`Prompt: "${p}". Against Stockfish, 2,000 games for no prompt and the matching prompt.`+(t==="checks"?" Checks barely move against Stockfish; in self-play the attack prompt raises them, more after DPO.":"");
+}
+function drawAll(){
+ const ink=css("--ink"),mut=css("--muted"),line=css("--line"),acc=css("--accent"),acc2=css("--accent2");
+ Chart.defaults.color=mut;Chart.defaults.borderColor=line;Chart.defaults.font.family="Inter";
+ mk("ptElo",{type:"line",data:{datasets:[
+   {label:"original order",data:ptA.map(([x,y])=>({x,y})),borderColor:acc2,backgroundColor:acc2,tension:.25,pointRadius:3},
+   {label:"final branch",data:ptB.map(([x,y])=>({x,y})),borderColor:acc,backgroundColor:acc,tension:.25,pointRadius:3},
+   {label:"final model, 999 games",data:[{x:100,y:1837}],borderColor:ink,backgroundColor:ink,pointRadius:7,pointStyle:"rectRot",showLine:false}]},
+  options:{...base(),scales:{x:{type:"linear",min:0,max:100,title:{display:true,text:"% of the pretraining pass"}},y:{min:1000,max:1900,title:{display:true,text:"Elo"}}}}});
+ mk("versus",{type:"bar",data:{labels:versus.map(v=>v[0]),datasets:[{label:"Elo advantage",data:versus.map(v=>v[1]),backgroundColor:acc2,borderRadius:6}]},
+  options:{...base(),indexAxis:"y",plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`+${versus[c.dataIndex][1]} (95% CI +${versus[c.dataIndex][2]} to +${versus[c.dataIndex][3]})`}}},scales:{x:{min:0,title:{display:true,text:"Elo advantage of chsm8-pt"}}}}});
+ mk("eloChart",{type:"bar",data:{labels:ELO.labels,datasets:[
+   {label:"chsm8-sft",data:ELO.sft,backgroundColor:mut,borderRadius:6},{label:"chsm8 (after DPO)",data:ELO.dpo,backgroundColor:acc,borderRadius:6}]},
+  options:{...base(),scales:{y:{min:1500,max:1900,title:{display:true,text:"Elo against Stockfish"}}}}});
+ drawStyle();
+}
+drawAll();
+})();
+</script>
+<script type="module">
+// Live tokenizer: LegumMagister/chsm8-tokenizer (Rust) compiled to WebAssembly.
+import init, * as tok from './pkg/chsm8_tok.js';
+const $ = s => document.querySelector(s);
+try { await init(); } catch (e) { $("#tokErr").textContent = "Tokenizer failed to load: " + e.message; throw e; }
+const canConvert = typeof tok.convert === "function";   // newer builds also export convert(game, src, dst, type)
+if (canConvert) $("#convWrap").hidden = false;
+const PIECES = ["P", "N", "B", "R", "Q", "K"];
+function chip(html, title) { const e = document.createElement("span"); e.className = "tok"; e.innerHTML = html; if (title) e.title = title; return e; }
+function run() {
+  const out = $("#tokOut"), err = $("#tokErr"), text = $("#tokIn").value, dst = canConvert ? $("#convDst").value : "";
+  out.innerHTML = ""; err.textContent = "";
+  try {
+    if (dst) { JSON.parse(tok.convert(text, "auto", dst, "list")).forEach(m => out.appendChild(chip(m))); return; }
+    const a = JSON.parse(tok.analyze(text)), ids = tok.tokenize(text);
+    a.uci.forEach((u, i) => {
+      const r = a.rows[i + 1];   // rows[0] is BOS
+      out.appendChild(chip(`${u} → <b>${ids[i]}</b> <i>(${r.join(",")})</i>`, `15-bit id ${ids[i].toString(2).padStart(15, "0")}; row (kind, src, dst, piece ${PIECES[r[3]]}, promo)`));
+    });
+    out.appendChild(chip(`<i>${a.legal.length} legal replies</i>`));
+  } catch (e) { err.textContent = e.message || String(e); }
+}
+$("#tokIn").addEventListener("input", run);
+$("#convDst").addEventListener("change", run);
+document.querySelectorAll("[data-ex]").forEach(b => b.onclick = () => { $("#tokIn").value = b.dataset.ex; run(); });
+run();
+</script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHSM8 Chess Lab</title>
+<link rel="stylesheet" href="vendor/chessboard-1.0.0.min.css"><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="vendor/jquery.min.js"></script><script src="vendor/chess.min.js"></script><script src="vendor/chessboard-1.0.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/ort.webgpu.min.js"></script>
+<script type="module">
+// One page, two ways to run the model:
+//   browser: everything in this tab. Moves -> Rust tokenizer (WebAssembly); prompt -> EmbeddingGemma-300m (transformers.js);
+//            rows + prompt -> CHSM8 decoder (ONNX Runtime Web, WebGPU or WebAssembly).
+//   server:  your own `python server.py` (PyTorch on CUDA, Apple MPS or CPU), full-precision weights.
+import { mount, startApp } from './app.js';
+import initTok, { analyze } from './pkg/chsm8_tok.js';
+
+const DECODER = 'https://huggingface.co/LegumMagister/chsm8/resolve/main/onnx/model_int8.onnx';
+const ENCODER = 'onnx-community/embeddinggemma-300m-ONNX';
+const HEADS = ['src', 'dst', 'piece', 'promo'];
+
+mount('play', `
+  <div class="runner">
+    <label class="inline"><input type="radio" name="runner" value="browser" checked> In this browser</label>
+    <select id="encDtype"><option value="q8">8-bit text encoder (about 480 MB in total)</option>
+      <option value="fp32">exact text encoder (about 1.4 GB in total)</option></select>
+    <button id="prepareBtn">Prepare weights</button> <span id="browserInfo" class="note">not loaded</span>
+  </div>
+  <div class="runner">
+    <label class="inline"><input type="radio" name="runner" value="server"> My server</label>
+    <input id="serverUrl" size="26"> <button id="testBtn">Test connection</button> <span id="serverInfo" class="note">not tested</span>
+  </div>
+  <div class="note">Browser: downloaded once and cached; runs on your GPU (WebGPU) or CPU, weights stored in 8 bits.
+    Server: <code>python server.py</code> from <a href="https://github.com/nov3o/llm_chess-demo">the repository</a>,
+    full precision on CUDA, Apple MPS or CPU.</div>`);
+
+const $id = id => document.getElementById(id);
+const runner = () => document.querySelector('input[name=runner]:checked').value;
+const params = new URLSearchParams(location.search);
+$id('serverUrl').value = params.get('server') || 'http://localhost:8000';
+if (params.get('backend') === 'server') document.querySelector('input[value=server]').checked = true;
+
+// ---- browser runner ----
+const tokReady = initTok();
+let decoder = null, encoder = null, tokenizer = null, encDtype = null;
+const textCache = new Map();
+const device = navigator.gpu && (await navigator.gpu.requestAdapter().catch(() => null)) ? 'webgpu' : 'wasm';
+
+async function cachedBytes(url, info) {
+  const cache = await caches.open('chsm8-v1');
+  let r = await cache.match(url);
+  if (!r) { info('Downloading the chess model (183 MB)…'); r = await fetch(url); await cache.put(url, r.clone()); }
+  return new Uint8Array(await r.arrayBuffer());
+}
+
+async function prepareBrowser() {
+  const info = t => ($id('browserInfo').textContent = t);
+  app.setBusy(true, 'Preparing the model in your browser…');
+  let ok = false;
+  try {
+    const { AutoModel, AutoTokenizer } = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5');
+    await tokReady;
+    const dtype = $id('encDtype').value;
+    if (encDtype !== dtype) {
+      info(`Loading the text encoder (${dtype})…`);
+      tokenizer = tokenizer || await AutoTokenizer.from_pretrained(ENCODER);
+      // 8-bit kernels run on the CPU in ONNX Runtime Web; the prompt is encoded once, so this stays fast
+      encoder = await AutoModel.from_pretrained(ENCODER, { dtype, device: dtype === 'fp32' ? device : 'wasm' });
+      encDtype = dtype; textCache.clear();
+    }
+    if (!decoder) {
+      const bytes = await cachedBytes(DECODER, info);
+      info('Loading the chess model…');
+      decoder = await ort.InferenceSession.create(bytes, { executionProviders: device === 'webgpu' ? ['webgpu', 'wasm'] : ['wasm'] });
+    }
+    info(`ready, on ${device === 'webgpu' ? 'your GPU (WebGPU)' : 'your CPU (WebAssembly)'}`);
+    document.querySelector('input[value=browser]').checked = true;
+    ok = true;
+  } catch (e) { info('could not load: ' + e.message); }
+  finally { app.setBusy(false); }
+  if (ok) app.resume();                   // play an engine turn that was waiting for the model
+}
+
+const NO_TEXT = () => ({ states: new ort.Tensor('float32', new Float32Array(768), [1, 1, 768]),
+                         mask: new ort.Tensor('bool', new Uint8Array([1]), [1, 1]) });
+async function textStates(prompt) {
+  if (!textCache.has(prompt)) {
+    const t = await tokenizer([prompt], { truncation: true, max_length: 128 });
+    const { last_hidden_state: h } = await encoder(t);
+    const L = h.dims[1];
+    textCache.set(prompt, { states: new ort.Tensor('float32', h.data, [1, L, 768]),
+                            mask: new ort.Tensor('bool', new Uint8Array(L).fill(1), [1, L]) });
+  }
+  return textCache.get(prompt);
+}
+
+async function scoreBrowser(moves, prompt) {
+  if (!decoder || !encoder) throw new Error('load the model first: press "Prepare weights" (in this browser) or "Test connection" (your server).');
+  const a = JSON.parse(analyze(moves));
+  if (!a.legal.length) return [];
+  const rows = a.rows.slice(-512);
+  const text = prompt ? await textStates(prompt) : NO_TEXT();
+  const out = await decoder.run({
+    rows: new ort.Tensor('int64', BigInt64Array.from(rows.flat(), BigInt), [1, rows.length, 5]),
+    text_states: text.states, text_mask: text.mask,
+    use_text: new ort.Tensor('float32', new Float32Array([prompt ? 1 : 0]), [1]),
+  });
+  const lp = Object.fromEntries(HEADS.map(k => [k, out[k].data]));
+  return a.legal.map(m => ({ uci: m.uci, san: m.san,
+    logp: lp.src[m.row[1]] + lp.dst[m.row[2]] + lp.piece[m.row[3]] + lp.promo[m.row[4]] }));
+}
+
+// ---- server runner ----
+async function testServer() {
+  const info = $id('serverInfo');
+  info.textContent = 'testing…';
+  try {
+    const r = await fetch($id('serverUrl').value + '/api/info').then(r => r.json());
+    info.textContent = `connected: ${r.model} on ${r.device}`;
+    document.querySelector('input[value=server]').checked = true;
+  } catch { info.textContent = 'not reachable: start it with python server.py'; return; }
+  app.resume();
+}
+
+async function scoreServer(moves, prompt) {
+  const url = $id('serverUrl').value;
+  let r;
+  try {
+    r = await fetch(url + '/api/score', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ moves, prompt }) });
+  } catch {
+    throw new Error(`the server at ${url} is not reachable. Start it with "python server.py", or choose "In this browser" and press "Prepare weights".`);
+  }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.detail || `server error (HTTP ${r.status})`);
+  return d.moves;
+}
+
+const app = startApp({
+  score: (moves, prompt) => (runner() === 'browser' ? scoreBrowser(moves, prompt) : scoreServer(moves, prompt)),
+  key: () => runner() + (runner() === 'browser' ? encDtype : $id('serverUrl').value),   // results differ per runner
+});
+$id('prepareBtn').onclick = prepareBrowser;
+$id('testBtn').onclick = testServer;
+document.querySelectorAll('input[name=runner]').forEach(r => r.addEventListener('change', () => app.clearOverlays()));
+app.newGame();
+app.setStatus('Choose how to run the model: "Prepare weights" (in this browser) or "Test connection" (your server).');
+if (runner() === 'server') testServer();
+</script>
+</body>
+</html>
